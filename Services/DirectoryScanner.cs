@@ -57,15 +57,25 @@ public sealed class DirectoryScanner
                 try
                 {
                     var info = new FileInfo(filePath);
-                    var sha = ComputeSha256(filePath);
+                    var existing = _repo.FindFileByPath(filePath);
 
+                    if (existing != null && existing.LastWriteTime == info.LastWriteTime)
+                    {
+                        report.Done++;
+                        progress?.Report(report);
+                        continue;
+                    }
+
+                    var sha = ComputeSha256(filePath);
                     var crc = _repo.GetOrCreateCrc(sha);
                     var entry = new FileEntry
                     {
-                        FullPath = filePath,
-                        FileSize = info.Length,
-                        CrcId = crc.Id,
-                        Sha256 = sha
+                        Id            = existing?.Id ?? Guid.NewGuid(),
+                        FullPath      = filePath,
+                        FileSize      = info.Length,
+                        CrcId         = crc.Id,
+                        Sha256        = sha,
+                        LastWriteTime = info.LastWriteTime
                     };
                     _repo.UpsertFile(entry);
                 }

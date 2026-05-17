@@ -6,6 +6,7 @@ public class FileEntry
     public string FullPath { get; set; } = string.Empty;
     public long FileSize { get; set; }
     public Guid CrcId { get; set; }
+    public DateTime LastWriteTime { get; set; }
 
     // Navigation (non persisté)
     public string? Sha256 { get; set; }

@@ -18,17 +18,18 @@ public sealed class FileRepository : IDisposable
     {
         Exec(@"
             CREATE TABLE IF NOT EXISTS Crc (
-                Id    TEXT PRIMARY KEY,
+                Id     TEXT PRIMARY KEY,
                 Sha256 TEXT NOT NULL UNIQUE
             );
             CREATE TABLE IF NOT EXISTS Fichier (
-                Id       TEXT PRIMARY KEY,
-                FullPath TEXT NOT NULL,
-                FileSize INTEGER NOT NULL,
-                CrcId    TEXT NOT NULL
+                Id            TEXT PRIMARY KEY,
+                FullPath      TEXT NOT NULL,
+                FileSize      INTEGER NOT NULL,
+                CrcId         TEXT NOT NULL,
+                LastWriteTime TEXT NOT NULL
             );
-            CREATE INDEX IF NOT EXISTS idx_fichier_path  ON Fichier(FullPath);
-            CREATE INDEX IF NOT EXISTS idx_fichier_crcid ON Fichier(CrcId);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_fichier_path  ON Fichier(FullPath);
+            CREATE INDEX        IF NOT EXISTS idx_fichier_crcid ON Fichier(CrcId);
         ");
     }
 
@@ -63,20 +64,30 @@ public sealed class FileRepository : IDisposable
 
     // ── Fichiers ────────────────────────────────────────────────────────────
 
+    public FileEntry? FindFileByPath(string path)
+    {
+        using var cmd = _db.CreateCommand();
+        cmd.CommandText = "SELECT Id, FullPath, FileSize, CrcId, LastWriteTime FROM Fichier WHERE FullPath = $path";
+        cmd.Parameters.AddWithValue("$path", path);
+        using var r = cmd.ExecuteReader();
+        return r.Read() ? ReadFileEntry(r) : null;
+    }
+
     public void UpsertFile(FileEntry file)
     {
         using var cmd = _db.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO Fichier (Id, FullPath, FileSize, CrcId)
-            VALUES ($id, $path, $size, $crc)
-            ON CONFLICT(Id) DO UPDATE SET
-                FullPath = excluded.FullPath,
-                FileSize = excluded.FileSize,
-                CrcId    = excluded.CrcId";
+            INSERT INTO Fichier (Id, FullPath, FileSize, CrcId, LastWriteTime)
+            VALUES ($id, $path, $size, $crc, $lwt)
+            ON CONFLICT(FullPath) DO UPDATE SET
+                FileSize      = excluded.FileSize,
+                CrcId         = excluded.CrcId,
+                LastWriteTime = excluded.LastWriteTime";
         cmd.Parameters.AddWithValue("$id",   file.Id.ToString());
         cmd.Parameters.AddWithValue("$path", file.FullPath);
         cmd.Parameters.AddWithValue("$size", file.FileSize);
         cmd.Parameters.AddWithValue("$crc",  file.CrcId.ToString());
+        cmd.Parameters.AddWithValue("$lwt",  file.LastWriteTime.ToString("O"));
         cmd.ExecuteNonQuery();
     }
 
@@ -84,7 +95,7 @@ public sealed class FileRepository : IDisposable
     {
         using var cmd = _db.CreateCommand();
         cmd.CommandText = @"
-            SELECT f.Id, f.FullPath, f.FileSize, f.CrcId, c.Sha256
+            SELECT f.Id, f.FullPath, f.FileSize, f.CrcId, f.LastWriteTime, c.Sha256
             FROM Fichier f
             JOIN Crc c ON c.Id = f.CrcId";
         using var r = cmd.ExecuteReader();
@@ -92,7 +103,7 @@ public sealed class FileRepository : IDisposable
         while (r.Read())
         {
             var entry = ReadFileEntry(r);
-            entry.Sha256 = r.GetString(4);
+            entry.Sha256 = r.GetString(5);
             list.Add(entry);
         }
         return list;
@@ -115,10 +126,9 @@ public sealed class FileRepository : IDisposable
 
     public List<DuplicateGroup> GetDuplicateGroups()
     {
-        // Récupère les CrcId ayant au moins 2 fichiers
         using var cmd = _db.CreateCommand();
         cmd.CommandText = @"
-            SELECT f.Id, f.FullPath, f.FileSize, f.CrcId, c.Sha256
+            SELECT f.Id, f.FullPath, f.FileSize, f.CrcId, f.LastWriteTime, c.Sha256
             FROM Fichier f
             JOIN Crc c ON c.Id = f.CrcId
             WHERE f.CrcId IN (
@@ -132,7 +142,7 @@ public sealed class FileRepository : IDisposable
         while (r.Read())
         {
             var entry = ReadFileEntry(r);
-            var sha   = r.GetString(4);
+            var sha   = r.GetString(5);
             var crcId = entry.CrcId.ToString();
             entry.Sha256 = sha;
 
@@ -154,10 +164,11 @@ public sealed class FileRepository : IDisposable
 
     private static FileEntry ReadFileEntry(SqliteDataReader r) => new()
     {
-        Id       = Guid.Parse(r.GetString(0)),
-        FullPath = r.GetString(1),
-        FileSize = r.GetInt64(2),
-        CrcId    = Guid.Parse(r.GetString(3))
+        Id            = Guid.Parse(r.GetString(0)),
+        FullPath      = r.GetString(1),
+        FileSize      = r.GetInt64(2),
+        CrcId         = Guid.Parse(r.GetString(3)),
+        LastWriteTime = DateTime.Parse(r.GetString(4))
     };
 
     private void Exec(string sql)
