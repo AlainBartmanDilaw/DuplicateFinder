@@ -12,6 +12,7 @@ public sealed class ProgressForm : Form
 
     public ProgressForm()
     {
+        _cts = new CancellationTokenSource();
         Text = "Scan en cours…";
         Size = new Size(600, 160);
         MinimumSize = Size;
@@ -71,12 +72,6 @@ public sealed class ProgressForm : Form
         };
 
         Controls.AddRange([_lblCount, _bar, _lblFile, _btnCancel]);
-    }
-
-    protected override void OnLoad(EventArgs e)
-    {
-        base.OnLoad(e);
-        _cts = new CancellationTokenSource();
     }
 
     public void UpdateProgress(Services.ScanProgress p)
