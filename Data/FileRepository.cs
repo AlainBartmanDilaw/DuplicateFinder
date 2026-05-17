@@ -83,11 +83,18 @@ public sealed class FileRepository : IDisposable
     public List<FileEntry> GetAllFiles()
     {
         using var cmd = _db.CreateCommand();
-        cmd.CommandText = "SELECT Id, FullPath, FileSize, CrcId FROM Fichier";
+        cmd.CommandText = @"
+            SELECT f.Id, f.FullPath, f.FileSize, f.CrcId, c.Sha256
+            FROM Fichier f
+            JOIN Crc c ON c.Id = f.CrcId";
         using var r = cmd.ExecuteReader();
         var list = new List<FileEntry>();
         while (r.Read())
-            list.Add(ReadFileEntry(r));
+        {
+            var entry = ReadFileEntry(r);
+            entry.Sha256 = r.GetString(4);
+            list.Add(entry);
+        }
         return list;
     }
 
