@@ -31,6 +31,15 @@ public sealed class FileRepository : IDisposable
             CREATE UNIQUE INDEX IF NOT EXISTS idx_fichier_path  ON Fichier(FullPath);
             CREATE INDEX        IF NOT EXISTS idx_fichier_crcid ON Fichier(CrcId);
         ");
+
+        // Migration : ajoute LastWriteTime si absente (bases créées avant cette colonne)
+        var cols = new HashSet<string>();
+        using var pragma = _db.CreateCommand();
+        pragma.CommandText = "PRAGMA table_info(Fichier)";
+        using var pr = pragma.ExecuteReader();
+        while (pr.Read()) cols.Add(pr.GetString(1));
+        if (!cols.Contains("LastWriteTime"))
+            Exec("ALTER TABLE Fichier ADD COLUMN LastWriteTime TEXT NOT NULL DEFAULT '0001-01-01T00:00:00.0000000'");
     }
 
     // ── CRC ────────────────────────────────────────────────────────────────
